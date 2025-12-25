@@ -28,3 +28,5 @@
 
 ![°](https://github.com/Ejected-Media/Up-To-A-Boil-discordBot/blob/main/pics/1766691356966.jpg "$")
 
+![°](https://github.com/Ejected-Media/Up-To-A-Boil-discordBot/blob/main/pics/1766691628998.jpg "$")
+
