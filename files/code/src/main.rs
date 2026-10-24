@@ -96,14 +96,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+// ... inside sync_file() in src/main.rs ...
+
 async fn sync_file(
     store: &LocalStore,
     file: &PathBuf,
     api_key: &str,
     parent_id: &str,
 ) -> Result<()> {
-    let content = tokio::fs::read_to_string(file).await?;
-    let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
+    let raw_content = tokio::fs::read_to_string(file).await?;
+    let hash = blake3::hash(raw_content.as_bytes()).to_hex().to_string();
     let path_key = file.to_string_lossy().to_string();
 
     if let Some(existing) = store.get_state(&path_key)? {
@@ -113,14 +115,21 @@ async fn sync_file(
         }
     }
 
-    let title = file
+    let fallback_title = file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled Note");
 
+    // Split YAML frontmatter from Markdown body
+    let (frontmatter_opt, markdown_body) = frontmatter::split_frontmatter(&raw_content)?;
+    let properties = match frontmatter_opt {
+        Some(fm) => fm.to_notion_properties(fallback_title, "Name"),
+        None => frontmatter::Frontmatter::default().to_notion_properties(fallback_title, "Name"),
+    };
+
     let client = NotionClient::new(api_key.to_string(), parent_id.to_string());
 
-    match client.push_new_page(title, &content).await {
+    match client.push_database_entry(properties, markdown_body).await {
         Ok(page_id) => {
             let state = FileSyncState {
                 file_path: path_key.clone(),
@@ -130,7 +139,7 @@ async fn sync_file(
             };
             store.upsert_state(&state)?;
             store.dequeue_offline(&path_key)?;
-            println!("✓ [SYNCED] {} -> Notion Page ID: {}", path_key, page_id);
+            println!("✓ [SYNCED] {} -> Notion DB Entry ID: {}", path_key, page_id);
         }
         Err(e) => {
             eprintln!("! [OFFLINE/ERR] Could not reach Notion: {}. Staging in redb queue.", e);
