@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+I'muse anyhow::{Context, Result};
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -115,3 +115,45 @@ impl NotionClient {
         Ok(page_id)
     }
 }
+
+    /// Creates a new entry inside a Notion Database with mapped YAML properties
+    pub async fn push_database_entry(
+        &self,
+        properties: Value,
+        markdown_body: &str,
+    ) -> Result<String> {
+        let children = Self::markdown_to_blocks(markdown_body);
+        let payload = json!({
+            "parent": {
+                "type": "database_id",
+                "database_id": self.parent_page_id
+            },
+            "properties": properties,
+            "children": children
+        });
+
+        let res = self
+            .http
+            .post("https://api.notion.com/v1/pages")
+            .bearer_auth(&self.api_key)
+            .header("Notion-Version", "2022-06-28")
+            .json(&payload)
+            .send()
+            .await
+            .context("Network error reaching Notion API")?;
+
+        let status = res.status();
+        let body: Value = res.json().await?;
+
+        if !status.is_success() {
+            anyhow::bail!("Notion API Error ({}): {}", status, body);
+        }
+
+        let page_id = body["id"]
+            .as_str()
+            .context("Missing page 'id' in Notion response")?
+            .to_string();
+
+        Ok(page_id)
+    }
+
